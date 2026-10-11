@@ -302,8 +302,10 @@ TEST(RemoteSession, DispatchEnforcesCallerPermissionsAndRetention) {
   EXPECT_TRUE(remote_session::uses_audio(remote_session::role_e::monitor, false));
   EXPECT_FALSE(remote_session::uses_audio(remote_session::role_e::monitor, true));
   EXPECT_TRUE(remote_session::uses_audio(remote_session::role_e::game, true));
-  EXPECT_FALSE(remote_session::uses_host_audio(remote_session::role_e::input));
-  EXPECT_TRUE(remote_session::uses_host_audio(remote_session::role_e::monitor));
+  EXPECT_FALSE(remote_session::uses_host_audio(remote_session::role_e::input, false));
+  EXPECT_FALSE(remote_session::uses_host_audio(remote_session::role_e::input, true));
+  EXPECT_FALSE(remote_session::uses_host_audio(remote_session::role_e::monitor, false));
+  EXPECT_TRUE(remote_session::uses_host_audio(remote_session::role_e::monitor, true));
 }
 
 TEST(RemoteSession, MonitorDisconnectPoliciesKeepStreamEndAndClientLossIndependent) {
