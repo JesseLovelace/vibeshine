@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, toRaw } from 'vue';
 
 import { apiGet, apiRequest, type ApiPayload } from '@/api/client';
 import { AppButton, InlineAlert, StatusBadge } from '@/components/ui';
@@ -29,7 +29,7 @@ function pairedClientMode(displayMode?: string) {
 }
 const previewNodes = computed<Node[]>(() => {
   if (!data.value) return [];
-  const nodes = structuredClone(data.value.nodes ?? []);
+  const nodes = structuredClone(toRaw(data.value.nodes ?? []));
   let rightmost = nodes.reduce((edge, node) => Math.max(edge, node.desired_position.x + node.mode.width), 0);
   for (const client of knownClients.value) {
     if (nodes.some((node) => node.id === client.uuid)) continue;
@@ -91,7 +91,7 @@ const validationError = computed(validation);
 function rebuildDraft(response: Response) { data.value = response; draft.value = structuredClone(response.layout?.placements ?? {}); if (props.clientUuid) choose(props.clientUuid); }
 async function load() { error.value = ''; try { rebuildDraft(await apiGet<Response>('/api/clients/display-layout')); } catch { error.value = 'Unable to load the display layout.'; } }
 async function save() { if (validationError.value) return; saving.value = true; error.value = ''; try { const response = await apiRequest<Response>('/api/clients/display-layout', { method: 'PUT', json: { version: 1, placements: draft.value } as ApiPayload }); rebuildDraft(response); } catch { error.value = 'The layout was not saved. No active topology was changed.'; } finally { saving.value = false; } }
-function revert() { if (data.value) draft.value = structuredClone(data.value.layout.placements ?? {}); }
+function revert() { if (data.value) draft.value = structuredClone(toRaw(data.value.layout.placements ?? {})); }
 function scaled(node: Node) { const width = Math.max(80, Math.round(node.mode.width / 18)); const height = Math.max(50, Math.round(node.mode.height / 18)); return { width: `${width}px`, height: `${height}px`, transform: `translate(${18 + Math.round((node.desired_position.x - previewOrigin.value.x) / 18)}px, ${18 + Math.round((node.desired_position.y - previewOrigin.value.y) / 18)}px)` }; }
 function keyboardPlace(edge: Edge) { if (!selectedPlacement.value) return; selectedPlacement.value.edge = edge; }
 function dragPlace(event: PointerEvent, client: Node) {
