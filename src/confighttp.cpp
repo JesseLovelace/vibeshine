@@ -2257,8 +2257,14 @@ namespace confighttp {
       if (!devices.is_array()) return;
       std::vector<remote_display_topology::node_t> nodes;
       for (const auto &device : devices) {
-        const auto id = device.value("device_id", "");
-        const auto label = device.value("friendly_name", device.value("display_name", id));
+        const auto string_field = [&device](const char *key) -> std::string {
+          const auto it = device.find(key);
+          return it != device.end() && it->is_string() ? it->get<std::string>() : std::string {};
+        };
+        const auto id = string_field("device_id");
+        auto label = string_field("friendly_name");
+        if (label.empty()) label = string_field("display_name");
+        if (label.empty()) label = id;
         if (id.empty()) continue;
 #ifdef __linux__
         if (platf::linux_private_display::is_private_output(id)) continue;
@@ -2269,9 +2275,12 @@ namespace confighttp {
         node.id = id;
         node.label = label;
         node.physical = true;
-        const auto info = device.value("info", nlohmann::json::object());
-        node.active = info.value("active", true);
-        node.primary = info.value("primary", false);
+        // Full enumeration keeps inactive outputs with a null "info" entry;
+        // treat those as inactive rather than failing the whole baseline.
+        const auto info_it = device.find("info");
+        const bool has_info = info_it != device.end() && info_it->is_object();
+        node.active = has_info ? info_it->value("active", true) : false;
+        node.primary = has_info ? info_it->value("primary", false) : false;
         nodes.push_back(std::move(node));
       }
       remote_display_topology::instance().set_physical_baseline(std::move(nodes));
