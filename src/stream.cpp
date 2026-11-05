@@ -125,6 +125,42 @@ using namespace std::literals;
 
 namespace stream {
   namespace {
+#ifdef _WIN32
+    // Runs a command as the signed-in user, in their session, without a
+    // window (Vibeshine itself runs as a service). Fire-and-forget.
+    void run_in_user_session(const std::string &cmd, std::string_view what) {
+      platf::bp::environment env = platf::bp::this_process::env();
+      boost::filesystem::path working_dir;
+      std::error_code ec;
+      auto child = platf::run_command(false, false, cmd, working_dir, env, nullptr, ec, nullptr);
+      if (ec) {
+        BOOST_LOG(warning) << what << " failed: " << ec.message();
+        return;
+      }
+      BOOST_LOG(info) << what << '.';
+      child.detach();
+    }
+
+    // Personal fork: lock the Windows session whenever a Remote Monitor
+    // stream ends (client disconnected, connection dropped, or stream
+    // stopped), so the host is never left unlocked after remote use.
+    void lock_user_session_after_remote_monitor() {
+      run_in_user_session("rundll32.exe user32.dll,LockWorkStation", "Locked the Windows session after the Remote Monitor stream ended");
+    }
+
+    // Personal fork: if <config dir>\remote_monitor_start.cmd exists, run it
+    // in the user's session when a Remote Monitor stream starts (used to make
+    // sure the user's privacy/lock helper is running even right after boot).
+    void run_remote_monitor_start_hook() {
+      std::error_code ec;
+      const auto hook = platf::appdata() / "remote_monitor_start.cmd";
+      if (!std::filesystem::exists(hook, ec)) {
+        return;
+      }
+      run_in_user_session("cmd.exe /c \"\"" + hook.string() + "\"\"", "Ran remote_monitor_start.cmd");
+    }
+#endif
+
     std::string current_server_version() {
       std::string version = PROJECT_VERSION;
 #ifdef PROJECT_VERSION_PRERELEASE
@@ -3333,6 +3369,12 @@ namespace stream {
       session.normal_display_capture.reset();
       remote_display_topology::instance().release_drained_normal_game_identities();
 
+#ifdef _WIN32
+      if (session.remote_role == remote_session::role_e::monitor) {
+        lock_user_session_after_remote_monitor();
+      }
+#endif
+
       if (session.remote_role == remote_session::role_e::monitor && !session.device_uuid.empty()) {
         const bool client_disconnected = session.client_disconnected.load(std::memory_order_acquire);
         if (remote_session::disconnect_monitor_after_stream(
@@ -3711,6 +3753,12 @@ namespace stream {
       BOOST_LOG(info) << "Session capture source: role=" << static_cast<int>(launch_session.role)
                       << " source=" << static_cast<int>(session->config.monitor.capture_source)
                       << " output='" << session->config.monitor.capture_output.value_or(std::string {}) << "'.";
+
+#ifdef _WIN32
+      if (launch_session.role == remote_session::role_e::monitor) {
+        run_remote_monitor_start_hook();
+      }
+#endif
 
 #if defined(_WIN32) || defined(__linux__)
       session->virtual_display.active = launch_session.virtual_display;
